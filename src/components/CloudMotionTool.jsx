@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { useLanguage } from '../context/LanguageContext';
 import { translations } from '../translations';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, checkBackendHealth, apiRequest } from '../config/api';
 
 const CloudMotionTool = () => {
   const [files, setFiles] = useState([]);
@@ -10,6 +10,8 @@ const CloudMotionTool = () => {
   const [prediction, setPrediction] = useState('');
   const [uploading, setUploading] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
+  const [backendHealth, setBackendHealth] = useState(null);
+  const [connectionError, setConnectionError] = useState(null);
 
   // Configuration states
   const [inputFrames, setInputFrames] = useState('4');
@@ -31,6 +33,34 @@ const CloudMotionTool = () => {
   const fileInputRef = useRef(null);
   const { language } = useLanguage();
   const t = translations[language];
+
+  // Check backend health on component mount
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const health = await checkBackendHealth();
+        setBackendHealth(health);
+        setConnectionError(null);
+      } catch (error) {
+        console.error('Backend health check failed:', error);
+        
+        // Handle specific error cases
+        if (error.message.includes('503')) {
+          setConnectionError('Server is temporarily unavailable. The ML models may not be loaded yet.');
+        } else {
+          setConnectionError(error.message);
+        }
+        setBackendHealth(null);
+      }
+    };
+
+    checkHealth();
+    
+    // Check health every 30 seconds
+    const healthInterval = setInterval(checkHealth, 30000);
+    
+    return () => clearInterval(healthInterval);
+  }, []);
 
   // File handling
   const handleDrop = (e) => {
@@ -82,18 +112,50 @@ const CloudMotionTool = () => {
       alert('Maximum 5 files allowed. Please select only 5 files.');
       return;
     }
-    setUploading(true);
-    const formData = new FormData();
-    for (let file of files) {
-      formData.append('files', file);
+
+    // Check backend health before upload
+    if (connectionError || !backendHealth) {
+      alert('Backend service is not available. Please try again later.');
+      return;
     }
+
+    setUploading(true);
+    setConnectionError(null);
+    
     try {
-      const response = await axios.post(`${API_BASE_URL}/upload`, formData);
-      setInputImages(response.data.input_images);
-      setPrediction(response.data.prediction);
+      const formData = new FormData();
+      for (let file of files) {
+        formData.append('files', file);
+      }
+
+      console.log('Uploading to:', `${API_BASE_URL}/upload`);
+      
+      const response = await fetch(`${API_BASE_URL}/upload`, {
+        method: 'POST',
+        body: formData,
+        // Don't set Content-Type header, let browser set it with boundary
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      setInputImages(data.input_images);
+      setPrediction(data.prediction);
+      
     } catch (err) {
       console.error('Error uploading:', err);
-      alert(t.uploadFailed);
+      setConnectionError(err.message);
+      
+      if (err.message.includes('ERR_NETWORK_IO_SUSPENDED') || 
+          err.message.includes('fetch') || 
+          err.name === 'TypeError') {
+        alert('Network connection error. Please check your internet connection and try again.');
+      } else {
+        alert(`Upload failed: ${err.message}`);
+      }
     } finally {
       setUploading(false);
     }

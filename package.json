@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "deploy": "npm run build && vercel --prod",
     "deploy:frontend": "vercel --prod",
-    "build:check": "npm run build && npm run preview"
+    "build:check": "npm run build && npm run preview",
+    "build:prod": "NODE_ENV=production vite build"
   },
   "dependencies": {
     "axios": "^1.6.8",
