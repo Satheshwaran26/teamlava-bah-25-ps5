@@ -1,9 +1,9 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000';
 
-// Helper function to check backend health
+// Helper function to check backend status
 export const checkBackendHealth = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/health`, {
+    const response = await fetch(`${API_BASE_URL}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -14,15 +14,15 @@ export const checkBackendHealth = async () => {
       throw new Error(`Backend health check failed: ${response.status}`);
     }
     
-    const health = await response.json();
-    console.log('Backend health:', health);
+    const data = await response.json();
+    console.log('Backend status:', data);
     
     // Check if models are loaded for predictions
-    if (!health.models_loaded) {
+    if (data.health && !data.health.models_loaded) {
       console.warn('⚠️ Backend is running but models are not loaded. Predictions will not work.');
     }
     
-    return health;
+    return data;
   } catch (error) {
     console.error('Backend health check error:', error);
     throw error;
